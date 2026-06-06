@@ -269,7 +269,7 @@ app.get('/votantes', requireLogin, (req, res) => {
     const totalAfiliados = rows.length;
     const votaron = rows.filter(r => r.votado === 1).length;
     const pendientes = totalAfiliados - votaron;
-    const porcentaje = totalAfiliados > 0? ((votaron/totalAfiliados)*100).toFixed(1) : 0;
+    const porcentaje = totalAfiliados > 0 ? ((votaron / totalAfiliados) * 100).toFixed(1) : 0;
 
     const porComite = {};
     rows.forEach(r => {
@@ -280,85 +280,210 @@ app.get('/votantes', requireLogin, (req, res) => {
       if (r.votado === 1) porComite[r.comite_nombre].votaron++;
     });
 
-    const tablaPendientes = rows
-.filter(r => r.votado === 0)
-.map(r => `
-        <tr class="border-b hover:bg-red-50">
-          <td class="px-4 py-3 font-mono">${r.cedula}</td>
-          <td class="px-4 py-3">${r.nombres_apellido}</td>
-          <td class="px-4 py-3">${r.comite_nombre}</td>
-          <td class="px-4 py-3">${r.mesa}</td>
-          <td class="px-4 py-3">${r.contacto || '-'}</td>
-          <td class="px-4 py-3">
-            <button onclick="marcarVoto('${r.cedula}')" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-sm">
-              ✓ Marcó Voto
-            </button>
-          </td>
-        </tr>
-      `).join('');
+    const filas = rows.map(r => `
+      <tr>
+        <td>${r.cedula}</td>
+        <td>${r.nombres_apellido}</td>
+        <td>${r.comite_nombre}</td>
+        <td>${r.mesa}</td>
+        <td>${r.contacto || '-'}</td>
+        <td>
+          ${r.votado === 1
+            ? `<span class="inline-block px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Voto ${r.hora_voto ? r.hora_voto.substring(11,16) : ''}</span>`
+            : `<button onclick="marcarVoto('${r.cedula}', this)" class="btn-voto px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-sm">
+                Ya Voto
+               </button>`
+          }
+        </td>
+      </tr>
+    `).join('');
 
     res.send(`<!DOCTYPE html>
-    <html lang="es"><head>
-      <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Control de Votantes - Renzo</title>
       <script src="https://cdn.tailwindcss.com"></script>
-      <meta http-equiv="refresh" content="30">
-    </head><body class="bg-gray-100">
+      <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+      <style>
+        body { background: #f3f4f6; font-family: 'Inter', sans-serif; }
+        #tablaVotantes_wrapper .dataTables_filter input {
+          border: 2px solid #d1d5db;
+          border-radius: 0.5rem;
+          padding: 0.4rem 0.75rem;
+          margin-left: 0.5rem;
+          outline: none;
+        }
+        #tablaVotantes_wrapper .dataTables_filter input:focus {
+          border-color: #7c3aed;
+        }
+        #tablaVotantes_wrapper .dataTables_length select {
+          border: 2px solid #d1d5db;
+          border-radius: 0.5rem;
+          padding: 0.3rem 0.5rem;
+        }
+        #tablaVotantes_wrapper .dataTables_paginate .paginate_button {
+          border-radius: 0.5rem !important;
+          padding: 0.3rem 0.75rem !important;
+          margin: 0 2px;
+        }
+        #tablaVotantes_wrapper .dataTables_paginate .paginate_button.current {
+          background: #7c3aed !important;
+          border-color: #7c3aed !important;
+          color: white !important;
+        }
+        #tablaVotantes thead th {
+          background: #f9fafb;
+          font-weight: 700;
+          color: #374151;
+          border-bottom: 2px solid #e5e7eb;
+          padding: 0.75rem 1rem;
+        }
+        #tablaVotantes tbody td {
+          padding: 0.65rem 1rem;
+          border-bottom: 1px solid #f3f4f6;
+          vertical-align: middle;
+        }
+        #tablaVotantes tbody tr:hover { background: #faf5ff; }
+      </style>
+    </head>
+    <body>
       <div class="min-h-screen p-4 md:p-6">
-        <div class="bg-white rounded-2xl p-6 mb-6 shadow-2xl">
-          <div class="flex justify-between items-center mb-6">
-            <div><h1 class="text-3xl font-black text-gray-800">Control de Votantes en Vivo</h1>
-            <p class="text-gray-600">Actualiza cada 30 segundos</p></div>
-            <div class="flex gap-3">
-              <a href="/votantes/pendientes/excel" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm">📊 Excel Pendientes</a>
-              <a href="/panel" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold">← Panel</a>
+
+        <!-- HEADER -->
+        <div class="bg-white rounded-2xl p-6 mb-6 shadow-xl">
+          <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h1 class="text-3xl font-black text-gray-800">Control de Votantes</h1>
+              <p class="text-gray-500 text-sm mt-1">Datos en tiempo real &mdash; <span id="ultimaActualizacion"></span></p>
             </div>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-xl">
-              <div class="text-sm opacity-90 mb-2">Total Padrón</div><div class="text-5xl font-black">${totalAfiliados}</div>
+            <div class="flex gap-3 flex-wrap">
+              <button onclick="location.reload()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Actualizar</button>
+              <a href="/votantes/pendientes/excel" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm">Excel Pendientes</a>
+              <a href="/panel" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm">Panel</a>
             </div>
-            <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-xl">
-              <div class="text-sm opacity-90 mb-2">Ya Votaron</div><div class="text-5xl font-black">${votaron}</div>
-              <div class="text-sm mt-2">${porcentaje}%</div>
-            </div>
-            <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-xl">
-              <div class="text-sm opacity-90 mb-2">Pendientes</div><div class="text-5xl font-black">${pendientes}</div>
-            </div>
-            <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-xl">
-              <div class="text-sm opacity-90 mb-2">Participación</div><div class="text-5xl font-black">${porcentaje}%</div>
-            </div>
-          <div class="mb-6">
-            <h2 class="text-2xl font-bold mb-4">Por Comité</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              ${Object.entries(porComite).map(([comite, data]) => `
-                <div class="bg-gray-50 rounded-xl p-4 border-2 border-gray-200">
-                  <div class="font-bold text-gray-800 mb-2">${comite}</div>
-                  <div class="text-3xl font-black text-blue-600">${data.votaron}/${data.total}</div>
-                  <div class="text-sm text-gray-600">${((data.votaron/data.total)*100).toFixed(1)}%</div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-          <div>
-            <h2 class="text-2xl font-bold mb-4 text-red-600">⚠ Pendientes: ${pendientes}</h2>
-            <div class="overflow-x-auto"><table class="w-full">
-              <thead class="bg-gray-100"><tr>
-                <th class="px-4 py-3 text-left">Cédula</th><th class="px-4 py-3 text-left">Nombre</th>
-                <th class="px-4 py-3 text-left">Comité</th><th class="px-4 py-3 text-left">Mesa</th>
-                <th class="px-4 py-3 text-left">Contacto</th><th class="px-4 py-3 text-left">Acción</th>
-              </tr></thead><tbody>${tablaPendientes || '<tr><td colspan="6" class="px-4 py-8 text-center text-green-600 font-bold">¡Todos votaron! 🎉</td></tr>'}</tbody>
-            </table></div>
           </div>
         </div>
+
+        <!-- CARDS RESUMEN -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-5 text-white shadow-lg">
+            <div class="text-xs uppercase tracking-wide opacity-80 mb-1">Total Padron</div>
+            <div class="text-4xl font-black">${totalAfiliados}</div>
+          </div>
+          <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-5 text-white shadow-lg">
+            <div class="text-xs uppercase tracking-wide opacity-80 mb-1">Ya Votaron</div>
+            <div class="text-4xl font-black">${votaron}</div>
+            <div class="text-sm mt-1 opacity-90">${porcentaje}%</div>
+          </div>
+          <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl p-5 text-white shadow-lg">
+            <div class="text-xs uppercase tracking-wide opacity-80 mb-1">Pendientes</div>
+            <div class="text-4xl font-black">${pendientes}</div>
+          </div>
+          <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg">
+            <div class="text-xs uppercase tracking-wide opacity-80 mb-1">Participacion</div>
+            <div class="text-4xl font-black">${porcentaje}%</div>
+            <div class="w-full bg-purple-400 rounded-full h-2 mt-2">
+              <div class="bg-white rounded-full h-2" style="width:${porcentaje}%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- POR COMITE -->
+        <div class="bg-white rounded-2xl p-6 mb-6 shadow-xl">
+          <h2 class="text-xl font-bold text-gray-800 mb-4">Por Comite</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            ${Object.entries(porComite).map(([comite, data]) => {
+              const pct = ((data.votaron / data.total) * 100).toFixed(0);
+              return `
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <div class="font-bold text-gray-700 text-sm mb-1 truncate" title="${comite}">${comite}</div>
+                  <div class="text-2xl font-black text-blue-600">${data.votaron}<span class="text-gray-400 text-base font-normal">/${data.total}</span></div>
+                  <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                    <div class="bg-blue-500 rounded-full h-1.5" style="width:${pct}%"></div>
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">${pct}%</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- TABLA CON DATATABLES -->
+        <div class="bg-white rounded-2xl p-6 shadow-xl">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold text-gray-800">Listado de Votantes</h2>
+            <div class="flex gap-2 text-xs">
+              <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full font-bold">Voto: ${votaron}</span>
+              <span class="px-3 py-1 bg-red-100 text-red-700 rounded-full font-bold">Pendiente: ${pendientes}</span>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table id="tablaVotantes" class="w-full text-sm" style="width:100%">
+              <thead>
+                <tr>
+                  <th>Cedula</th>
+                  <th>Nombre</th>
+                  <th>Comite</th>
+                  <th>Mesa</th>
+                  <th>Contacto</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filas}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
+
+      <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+      <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
       <script>
-        function marcarVoto(cedula) {
-          if(confirm('¿Confirmar que ' + cedula + ' ya votó?')) {
-            fetch('/votantes/marcar/' + cedula, { method: 'POST' }).then(() => location.reload());
-          }
+        document.getElementById('ultimaActualizacion').textContent =
+          'Actualizado: ' + new Date().toLocaleTimeString('es-PY');
+
+        $(document).ready(function () {
+          $('#tablaVotantes').DataTable({
+            pageLength: 25,
+            lengthMenu: [10, 25, 50, 100, 250],
+            order: [[2, 'asc'], [3, 'asc']],
+            language: {
+              url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'
+            },
+            columnDefs: [
+              { orderable: false, targets: 5 }
+            ]
+          });
+        });
+
+        function marcarVoto(cedula, btn) {
+          if (!confirm('Confirmar que cedula ' + cedula + ' ya voto?')) return;
+          btn.disabled = true;
+          btn.textContent = '...';
+          fetch('/votantes/marcar/' + cedula, { method: 'POST' })
+            .then(r => {
+              if (r.ok) {
+                const td = btn.closest('td');
+                td.innerHTML = '<span class="inline-block px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Voto</span>';
+              } else {
+                btn.disabled = false;
+                btn.textContent = 'Ya Voto';
+                alert('Error al marcar. Intenta de nuevo.');
+              }
+            })
+            .catch(() => {
+              btn.disabled = false;
+              btn.textContent = 'Ya Voto';
+              alert('Error de conexion.');
+            });
         }
       </script>
-    </body></html>`);
+    </body>
+    </html>`);
   });
 });
 
