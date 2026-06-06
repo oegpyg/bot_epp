@@ -1,9 +1,8 @@
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const { Boom } = require('@hapi/boom');
-const qrcode = require('qrcode-terminal');
-const pino = require('pino');
-const sqlite3 = require('sqlite3').verbose();
 const { handleMessage } = require('./bot/handlers/handlers');
+const { loadConfig } = require('./config/env');
+const { createDatabase } = require('./db');
+const { connectToWhatsApp } = require('./whatsapp/connect');
+const requireLogin = require('./middleware/requireLogin');
 const express = require('express');
 const session = require('express-session');
 const crypto = require('crypto');
@@ -12,36 +11,10 @@ const ExcelJS = require('exceljs');
 const multer = require('multer');
 const fs = require('fs');
 
-// Minimal .env loader without extra dependencies.
-function loadEnvFile(filePath = '.env') {
-  if (!fs.existsSync(filePath)) return;
-  const raw = fs.readFileSync(filePath, 'utf8');
-  raw.split(/\r?\n/).forEach((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) return;
-    const eqIndex = trimmed.indexOf('=');
-    if (eqIndex <= 0) return;
-    const key = trimmed.slice(0, eqIndex).trim();
-    const value = trimmed.slice(eqIndex + 1).trim().replace(/^['\"]|['\"]$/g, '');
-    if (key && process.env[key] === undefined) {
-      process.env[key] = value;
-    }
-  });
-}
-
-loadEnvFile();
+const config = loadConfig();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const WA_AUTH_DIR = process.env.WA_AUTH_DIR || 'auth_info_baileys';
-const SESSION_SECRET = process.env.SESSION_SECRET;
-const ADMIN_USER = process.env.ADMIN_USER;
-const ADMIN_PASS = process.env.ADMIN_PASS;
-
-if (!SESSION_SECRET || !ADMIN_USER || !ADMIN_PASS) {
-  console.error('Faltan variables requeridas: SESSION_SECRET, ADMIN_USER, ADMIN_PASS');
-  process.exit(1);
-}
+const PORT = config.port;
 
 const upload = multer({
   dest: 'uploads/',
@@ -64,59 +37,7 @@ const upload = multer({
 // =========================
 // CONFIGURACIÓN DE BASE DE DATOS
 // =========================
-const db = new sqlite3.Database('./db/database.db', (err) => {
-  if (err) console.error('Error al conectar DB:', err);
-  else console.log('✅ Base de datos conectada');
-});
-
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS voluntarios (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT,
-      contacto TEXT UNIQUE,
-      fecha TEXT
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS simpatizantes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT,
-      barrio TEXT,
-      contacto TEXT UNIQUE,
-      fecha TEXT
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS afiliados (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      cedula TEXT UNIQUE,
-      nombres_apellido TEXT,
-      comite_nombre TEXT,
-      mesa TEXT,
-      distrito_nombre TEXT,
-      contacto TEXT,
-      fecha TEXT
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS votos (
-      cedula TEXT PRIMARY KEY,
-      votado INTEGER DEFAULT 0,
-      hora_voto TEXT,
-      marcado_por TEXT
-    )
-  `);
-
-  db.run(`ALTER TABLE afiliados ADD COLUMN contacto TEXT`, (err) => {
-    if (err &&!err.message.includes('duplicate column')) {
-      console.log('Columna contacto ya existe o error:', err.message);
-    }
-  });
-});
+const db = createDatabase();
 
 // =========================
 // CONFIGURACIÓN EXPRESS
@@ -124,24 +45,16 @@ db.serialize(() => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: SESSION_SECRET,
+  secret: config.sessionSecret,
   resave: false,
   saveUninitialized: false,
   cookie: {
     maxAge: 24 * 60 * 60 * 1000,
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production'
+    secure: config.nodeEnv === 'production'
   }
 }));
-
-function requireLogin(req, res, next) {
-  if (req.session.loggedIn) {
-    next();
-  } else {
-    res.redirect('/login');
-  }
-}
 
 // =========================
 // LOGIN
@@ -200,9 +113,9 @@ app.post('/login', (req, res) => {
   const cleanPassword = password.trim();
 
   const providedUser = Buffer.from(cleanUsername, 'utf8');
-  const expectedUser = Buffer.from(ADMIN_USER, 'utf8');
+  const expectedUser = Buffer.from(config.adminUser, 'utf8');
   const providedPass = Buffer.from(cleanPassword, 'utf8');
-  const expectedPass = Buffer.from(ADMIN_PASS, 'utf8');
+  const expectedPass = Buffer.from(config.adminPass, 'utf8');
 
   const userOk =
     providedUser.length === expectedUser.length &&
@@ -933,50 +846,8 @@ app.listen(PORT, () => {
   console.log(`🏆 Ranking: http://localhost:${PORT}/ranking`);
   console.log(`🗳️ Control Votantes: http://localhost:${PORT}/votantes`);
 });
-
-// =========================
-// WHATSAPP BOT
-// =========================
-async function connectToWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState(WA_AUTH_DIR);
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-    logger: pino({ level: 'silent' }),
-    browser: ['Bot Renzo', 'Chrome', '120.0.0']
-  });
-
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
-
-    if (qr) {
-      console.log('\n📱 ESCANEÁ ESTE QR CON WHATSAPP → Dispositivos vinculados:\n');
-      qrcode.generate(qr, { small: true });
-      console.log('\n⏰ Tenés 60 segundos para escanear\n');
-    }
-
-    if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode!== DisconnectReason.loggedOut;
-      console.log('❌ Conexión cerrada. Reconectando:', shouldReconnect);
-      if (shouldReconnect) {
-        setTimeout(() => connectToWhatsApp(), 3000);
-      } else {
-        console.log('⚠ Sesión cerrada. Borrá auth_info_baileys y reiniciá');
-      }
-    } else if (connection === 'open') {
-      console.log('✅ WhatsApp conectado correctamente');
-    }
-  });
-
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('messages.upsert', async (m) => {
-    const msg = m.messages[0];
-    if (!msg.key.fromMe && msg.message) {
-      console.log('📩 Mensaje recibido:', msg.message.conversation || msg.message.extendedTextMessage?.text);
-    }
-    await handleMessage(sock, db, m);
-  });
-}
-
-connectToWhatsApp();
+connectToWhatsApp({
+  handleMessage,
+  db,
+  authDir: config.waAuthDir
+});
