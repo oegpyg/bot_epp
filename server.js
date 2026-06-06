@@ -396,8 +396,10 @@ app.get('/votantes', requireLogin, (req, res) => {
           <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
             ${Object.entries(porComite).map(([comite, data]) => {
               const pct = ((data.votaron / data.total) * 100).toFixed(0);
+              const visible = comite.includes('N°1') || comite.includes('Nº1') || comite.includes('N1') ||
+                              comite.includes('N°2') || comite.includes('Nº2') || comite.includes('N2');
               return `
-                <div class="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-200${visible ? '' : ' hidden'}">
                   <div class="font-bold text-gray-700 text-sm mb-1 truncate" title="${comite}">${comite}</div>
                   <div class="text-2xl font-black text-blue-600">${data.votaron}<span class="text-gray-400 text-base font-normal">/${data.total}</span></div>
                   <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
