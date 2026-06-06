@@ -1,0 +1,11 @@
+{
+  "watch": ["server.js", "bot"],
+  "ignore": [
+    "auth_info_baileys",
+    "db",
+    "uploads",
+    "node_modules",
+    "*.db"
+  ],
+  "ext": "js,json"
+}
