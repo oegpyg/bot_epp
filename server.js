@@ -396,8 +396,9 @@ app.get('/votantes', requireLogin, (req, res) => {
           <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
             ${Object.entries(porComite).map(([comite, data]) => {
               const pct = ((data.votaron / data.total) * 100).toFixed(0);
-              const visible = comite.includes('N°1') || comite.includes('Nº1') || comite.includes('N1') ||
-                              comite.includes('N°2') || comite.includes('Nº2') || comite.includes('N2');
+              const VISIBLES = ['J. A. SALDIVAR N°1', 'J. A. SALDIVAR Nº1', 'J. A. SALDIVAR N1',
+                               'J. A. SALDIVAR N°2', 'J. A. SALDIVAR Nº2', 'J. A. SALDIVAR N2'];
+              const visible = VISIBLES.some(v => comite.toUpperCase().includes(v.toUpperCase()));
               return `
                 <div class="bg-gray-50 rounded-xl p-4 border border-gray-200${visible ? '' : ' hidden'}">
                   <div class="font-bold text-gray-700 text-sm mb-1 truncate" title="${comite}">${comite}</div>
