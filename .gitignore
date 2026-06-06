@@ -1,0 +1,100 @@
+# -----------------------------
+# Node.js dependencies
+# -----------------------------
+node_modules/
+
+# Package manager logs and debug files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Optional npm cache directory
+.npm/
+
+# Yarn cache and state
+.yarn/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# pnpm store
+.pnpm-store/
+
+# -----------------------------
+# Environment and secrets
+# -----------------------------
+.env
+.env.*
+!.env.example
+
+# -----------------------------
+# WhatsApp auth/session artifacts
+# -----------------------------
+auth/
+auth_info_baileys/
+
+# -----------------------------
+# Runtime files and logs
+# -----------------------------
+logs/
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+tmp/
+temp/
+.tmp/
+
+uploads/
+
+# -----------------------------
+# Build outputs and coverage
+# -----------------------------
+dist/
+build/
+out/
+coverage/
+.nyc_output/
+
+# Framework and bundler caches
+.cache/
+.parcel-cache/
+.turbo/
+.vite/
+.next/
+.nuxt/
+.svelte-kit/
+
+# TypeScript
+*.tsbuildinfo
+
+# -----------------------------
+# Databases and local data
+# -----------------------------
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# -----------------------------
+# OS and editor
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+*.iml
+
+# -----------------------------
+# Misc
+# -----------------------------
+*.swp
+*.swo
+*~
